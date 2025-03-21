@@ -1,0 +1,21 @@
+server:
+  port: 18080
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+  web:
+    resources:
+      static-locations:
+        - classpath:/static/
+        - classpath:/static/frontend/dist/
+  thymeleaf:
+    prefix: classpath:/static/frontend/dist/
+    cache: false
+
+logging:
+  level:
+    com.anner: DEBUG
+    org.springframework.web: DEBUG 
