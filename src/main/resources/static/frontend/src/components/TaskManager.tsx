@@ -1,11 +1,10 @@
-import { ExclamationCircleOutlined } from '@ant-design/icons';
-import { Button, Card, Modal, Space, Table, Tag, Typography, message } from 'antd';
+import { CheckCircleFilled, CloseCircleFilled, DownloadOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons';
+import { Button, Card, message, Modal, Space, Table, Tag, Typography } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const { Title } = Typography;
-const { confirm } = Modal;
 
 interface Task {
     id: string;
@@ -13,6 +12,7 @@ interface Task {
     modelType: string;
     progress: number;
     status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+    currentStage: string;
     createTime: string;
     updateTime: string;
     errorMessage?: string;
@@ -37,15 +37,17 @@ const TaskManager: React.FC = () => {
 
     useEffect(() => {
         fetchTasks();
-        const interval = setInterval(fetchTasks, 5000); // 每5秒刷新一次
-        return () => clearInterval(interval);
+        const intervalId = setInterval(fetchTasks, 5000);
+        return () => clearInterval(intervalId);
     }, []);
 
-    const handleCancel = (taskId: string) => {
-        confirm({
+    const handleCancel = async (taskId: string) => {
+        Modal.confirm({
             title: '确认取消任务',
-            icon: <ExclamationCircleOutlined />,
-            content: '确定要取消这个任务吗？取消后无法恢复。',
+            content: '确定要取消这个任务吗？',
+            okText: '确定',
+            okType: 'danger',
+            cancelText: '取消',
             onOk: async () => {
                 try {
                     const response = await axios.post(`/api/tasks/${taskId}/cancel`);
@@ -61,15 +63,65 @@ const TaskManager: React.FC = () => {
         });
     };
 
-    const getStatusTag = (status: Task['status']) => {
-        const statusConfig = {
-            RUNNING: { color: 'processing', text: '运行中' },
-            COMPLETED: { color: 'success', text: '已完成' },
-            FAILED: { color: 'error', text: '失败' },
-            CANCELLED: { color: 'default', text: '已取消' },
-        };
-        const config = statusConfig[status];
-        return <Tag color={config.color}>{config.text}</Tag>;
+    const handleDownload = async (taskId: string) => {
+        try {
+            const link = document.createElement('a');
+            link.href = `/api/embedding/download/${taskId}`;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error('下载失败:', error);
+            message.error('下载失败，请重试');
+        }
+    };
+
+    const getStatusIcon = (status: string) => {
+        switch (status) {
+            case 'COMPLETED':
+                return <CheckCircleFilled style={{ color: '#52c41a' }} />;
+            case 'FAILED':
+                return <CloseCircleFilled style={{ color: '#ff4d4f' }} />;
+            case 'CANCELLED':
+                return <StopOutlined style={{ color: '#faad14' }} />;
+            case 'RUNNING':
+                return <LoadingOutlined style={{ color: '#1890ff' }} />;
+            default:
+                return null;
+        }
+    };
+
+    const getStatusTag = (status: string) => {
+        let color = '';
+        let text = '';
+        switch (status) {
+            case 'COMPLETED':
+                color = 'success';
+                text = '已完成';
+                break;
+            case 'FAILED':
+                color = 'error';
+                text = '失败';
+                break;
+            case 'CANCELLED':
+                color = 'warning';
+                text = '已取消';
+                break;
+            case 'RUNNING':
+                color = 'processing';
+                text = '处理中';
+                break;
+            default:
+                color = 'default';
+                text = '未知';
+        }
+        return (
+            <Tag icon={getStatusIcon(status)} color={color}>
+                {text}
+            </Tag>
+        );
     };
 
     const columns = [
@@ -77,49 +129,63 @@ const TaskManager: React.FC = () => {
             title: '文件名',
             dataIndex: 'fileName',
             key: 'fileName',
+            width: 200,
         },
         {
             title: '模型类型',
             dataIndex: 'modelType',
             key: 'modelType',
+            width: 200,
         },
         {
             title: '状态',
             dataIndex: 'status',
             key: 'status',
-            render: (status: Task['status']) => getStatusTag(status),
+            width: 120,
+            render: (status: string) => getStatusTag(status),
         },
         {
-            title: '进度',
-            dataIndex: 'progress',
-            key: 'progress',
-            render: (progress: number) => `${Math.floor(progress)}%`,
+            title: '当前阶段',
+            dataIndex: 'currentStage',
+            key: 'currentStage',
+            width: 200,
         },
         {
             title: '创建时间',
             dataIndex: 'createTime',
             key: 'createTime',
-            render: (time: string) => new Date(time).toLocaleString(),
+            width: 180,
         },
         {
             title: '更新时间',
             dataIndex: 'updateTime',
             key: 'updateTime',
-            render: (time: string) => new Date(time).toLocaleString(),
+            width: 180,
         },
         {
             title: '操作',
             key: 'action',
+            width: 200,
             render: (_: any, record: Task) => (
                 <Space>
                     {record.status === 'RUNNING' && (
-                        <Button type="primary" danger onClick={() => handleCancel(record.id)}>
-                            取消
+                        <Button
+                            danger
+                            type="primary"
+                            icon={<StopOutlined />}
+                            onClick={() => handleCancel(record.id)}
+                        >
+                            中断
                         </Button>
                     )}
-                    {record.status === 'FAILED' && (
-                        <Button type="link" onClick={() => message.error(record.errorMessage)}>
-                            查看错误
+                    {record.status === 'COMPLETED' && (
+                        <Button
+                            type="primary"
+                            icon={<DownloadOutlined />}
+                            onClick={() => handleDownload(record.id)}
+                            style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                        >
+                            下载
                         </Button>
                     )}
                 </Space>
@@ -128,13 +194,10 @@ const TaskManager: React.FC = () => {
     ];
 
     return (
-        <div style={{ padding: '24px' }}>
-            <Card>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-                    <Title level={3} style={{ margin: 0 }}>任务管理</Title>
-                    <Button type="primary" onClick={() => navigate('/')}>
-                        返回主页
-                    </Button>
+        <div style={{ maxWidth: 1200, margin: '40px auto', padding: '0 24px' }}>
+            <Card bordered={false}>
+                <div style={{ marginBottom: 24, textAlign: 'center' }}>
+                    <Title level={2}>任务管理</Title>
                 </div>
                 <Table
                     columns={columns}
@@ -142,6 +205,7 @@ const TaskManager: React.FC = () => {
                     rowKey="id"
                     loading={loading}
                     pagination={false}
+                    scroll={{ x: 1200 }}
                 />
             </Card>
         </div>

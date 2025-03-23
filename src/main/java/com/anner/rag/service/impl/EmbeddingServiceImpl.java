@@ -6,9 +6,12 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import org.apache.commons.compress.archivers.ArchiveEntry;
@@ -80,7 +83,7 @@ public class EmbeddingServiceImpl implements EmbeddingService {
             // 异步处理向量化
             return CompletableFuture.runAsync(() -> {
                 try {
-                    processExtractedFiles(config, extractDirPath, taskId);
+                    processExtractedFiles(taskId, config, extractDirPath, taskId);
                 } catch (Exception e) {
                     log.error("向量化处理失败", e);
                     taskService.failTask(taskId, e.getMessage());
@@ -158,63 +161,108 @@ public class EmbeddingServiceImpl implements EmbeddingService {
         }
     }
 
-    private void processExtractedFiles(EmbeddingConfig config, String extractDirPath, String taskId) {
+    private void processExtractedFiles(String uuidName, EmbeddingConfig config, String extractDirPath, String taskId) {
         try {
-            // 处理解压后的文件
-            List<TextSegment> segments = FileProcessor.processFiles(
-                    extractDirPath,
-                    config.getMaxTokensPerChunk(),
-                    config.getOverlapTokens());
+            Task task = taskService.getTask(taskId);
+            task.setCurrentStage("正在分析文件并进行文本分段");
+            log.info("开始处理文件：{}，任务ID：{}", task.getFileName(), taskId);
 
-            // 更新任务的总段数
-            taskService.updateTaskProgress(taskId, 0, segments.size());
+            // 处理解压后的文件
+            Collection<File> files = FileUtils.listFiles(new File(extractDirPath),
+                    new String[] { "json", "md" }, true);
+            int totalFiles = files.size();
+            log.info("共发现 {} 个文件需要处理", totalFiles);
+
+            List<TextSegment> segments = new ArrayList<>();
+            int processedFiles = 0;
+
+            for (File file : files) {
+                if (taskService.isTaskCancelled(taskId)) {
+                    throw new RagException(RagErrorCode.TASK_CANCELLED, "任务已取消");
+                }
+
+                log.debug("正在处理文件：{}", file.getName());
+                List<TextSegment> fileSegments = FileProcessor.processFiles(
+                        Collections.singletonList(file),
+                        config.getMaxTokensPerChunk(),
+                        config.getOverlapTokens());
+                segments.addAll(fileSegments);
+
+                processedFiles++;
+                double segmentProgress = (double) processedFiles / totalFiles * 100;
+                task.setSegmentProgress(segmentProgress);
+                task.setProgress(segmentProgress * 0.3); // 文本分段占总进度的30%
+                task.setUpdateTime(LocalDateTime.now());
+                log.debug("文件处理进度：{}/{}，当前文件：{}，生成段落数：{}",
+                        processedFiles, totalFiles, file.getName(), fileSegments.size());
+            }
+
+            log.info("文本分段完成，共生成 {} 个文本段", segments.size());
+            task.setCurrentStage("正在生成文本向量");
 
             // 执行向量化
             InMemoryEmbeddingStore<TextSegment> embeddingStore = generateEmbeddingStore(config, segments, taskId);
 
             // 保存向量化的结果
-            String vectorFilePath = saveVectorFile(taskId, embeddingStore, segments.size());
-
-            // 更新任务状态和向量文件路径
-            Task task = taskService.getTask(taskId);
+            String vectorFilePath = saveVectorFile(uuidName, embeddingStore, segments.size());
             task.setVectorFilePath(vectorFilePath);
+
+            task.setCurrentStage("处理完成");
             taskService.completeTask(taskId);
+            log.info("任务处理完成：{}，向量文件已保存：{}", taskId, vectorFilePath);
         } catch (Exception e) {
+            log.error("向量化处理失败：{}", e.getMessage(), e);
             throw new RagException(RagErrorCode.VECTORIZATION_FAILED, e);
         }
     }
 
     private InMemoryEmbeddingStore<TextSegment> generateEmbeddingStore(EmbeddingConfig config,
             List<TextSegment> segments, String taskId) {
+        Task task = taskService.getTask(taskId);
         InMemoryEmbeddingStore<TextSegment> embeddingStore = new InMemoryEmbeddingStore<>();
         EmbeddingModel embeddingModel = LLM.doubaoLLMEmbedding(config.getModelType(), config.getBaseUrl(),
                 config.getApiKey());
 
+        int totalSegments = segments.size();
         int processedCount = 0;
+        log.info("开始生成向量，共 {} 个文本段", totalSegments);
+
         for (TextSegment segment : segments) {
             if (taskService.isTaskCancelled(taskId)) {
                 throw new RagException(RagErrorCode.TASK_CANCELLED, "任务已取消");
             }
 
             try {
+                log.debug("正在处理第 {}/{} 个文本段，长度：{}", processedCount + 1, totalSegments, segment.text().length());
                 Embedding embedding = embeddingModel.embed(segment).content();
                 embeddingStore.add(embedding, segment);
                 processedCount++;
+
                 // 更新任务进度
-                taskService.updateTaskProgress(taskId, processedCount, segments.size());
-                log.info("任务 {} ,向量化处理进度: {}%", taskId, taskService.getTask(taskId).getProgress());
+                double embeddingProgress = (double) processedCount / totalSegments * 100;
+                task.setEmbeddingProgress(embeddingProgress);
+                // 向量化占总进度的70%
+                task.setProgress(30 + embeddingProgress * 0.7);
+                task.setUpdateTime(LocalDateTime.now());
+
+                if (processedCount % 10 == 0 || processedCount == totalSegments) {
+                    log.info("向量化进度：{}/{}，完成度：{}%",
+                            processedCount, totalSegments, embeddingProgress);
+                }
             } catch (Exception e) {
-                log.error("向量化处理失败: {}", e.getMessage());
+                log.error("处理文本段失败：{}", e.getMessage());
                 throw new RagException(RagErrorCode.VECTORIZATION_FAILED, e);
             }
         }
 
+        log.info("向量生成完成，共处理 {} 个文本段", totalSegments);
         return embeddingStore;
     }
 
-    private String saveVectorFile(String uuid, InMemoryEmbeddingStore<TextSegment> embeddingStore, int segmentsSize) {
+    private String saveVectorFile(String uuidName, InMemoryEmbeddingStore<TextSegment> embeddingStore,
+            int segmentsSize) {
         try {
-            String fileName = uuid + ".json";
+            String fileName = uuidName + ".json";
             File vectorFile = new File(VECTOR_DIR, fileName);
             log.debug("准备保存向量文件：{}", vectorFile.getAbsolutePath());
             embeddingStore.serializeToFile(vectorFile.getAbsolutePath());

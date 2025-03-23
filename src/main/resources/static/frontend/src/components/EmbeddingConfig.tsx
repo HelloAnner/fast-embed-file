@@ -1,4 +1,4 @@
-import { DownloadOutlined, FileTextOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons';
+import { CheckCircleFilled, DownloadOutlined, FileTextOutlined, LoadingOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons';
 import { Button, Card, Form, Input, InputNumber, message, Progress, Select, Space, Typography, Upload } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
@@ -45,12 +45,25 @@ const ERROR_MESSAGES: { [key: string]: string } = {
 
 interface EmbeddingConfigProps { }
 
+interface StageInfo {
+    key: string;
+    title: string;
+    progress: number;
+    completed: boolean;
+}
+
 const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
     const [form] = Form.useForm();
     const [processing, setProcessing] = useState(false);
     const [completed, setCompleted] = useState(false);
     const [progress, setProgress] = useState(0);
     const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+    const [stages, setStages] = useState<StageInfo[]>([
+        { key: 'prepare', title: '准备处理文件', progress: 0, completed: false },
+        { key: 'segment', title: '文本分段', progress: 0, completed: false },
+        { key: 'embedding', title: '生成文本向量', progress: 0, completed: false },
+        { key: 'complete', title: '处理完成', progress: 0, completed: false },
+    ]);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -61,16 +74,38 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                     const response = await axios.get(`/api/tasks/${currentTaskId}`);
                     if (response.data.success) {
                         const task = response.data.data;
-                        // 确保进度是一个有效的数字
-                        const currentProgress = typeof task.progress === 'number' ? task.progress : 0;
-                        setProgress(currentProgress);
+                        setProgress(task.progress);
+
+                        // 更新各阶段状态
+                        const newStages = [...stages];
+
+                        if (task.currentStage === "准备处理文件") {
+                            newStages[0].progress = 100;
+                            newStages[0].completed = true;
+                        } else if (task.currentStage === "正在分析文件并进行文本分段") {
+                            newStages[0].completed = true;
+                            newStages[0].progress = 100;
+                            newStages[1].progress = task.segmentProgress;
+                        } else if (task.currentStage === "正在生成文本向量") {
+                            newStages[0].completed = true;
+                            newStages[0].progress = 100;
+                            newStages[1].completed = true;
+                            newStages[1].progress = 100;
+                            newStages[2].progress = task.embeddingProgress;
+                        } else if (task.currentStage === "处理完成") {
+                            newStages.forEach(stage => {
+                                stage.completed = true;
+                                stage.progress = 100;
+                            });
+                        }
+
+                        setStages(newStages);
 
                         if (task.status === 'COMPLETED') {
                             setProcessing(false);
                             setCompleted(true);
                             setProgress(100);
                             clearInterval(intervalId);
-                            message.success('向量化处理完成！');
                             form.resetFields(['file']);
                         } else if (task.status === 'FAILED') {
                             setProcessing(false);
@@ -100,7 +135,7 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                 clearInterval(intervalId);
             }
         };
-    }, [processing, currentTaskId, form]);
+    }, [processing, currentTaskId, form, stages]);
 
     const handleError = (error: any) => {
         if (error.response?.data) {
@@ -362,15 +397,55 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                     </Form.Item>
 
                     {processing && (
-                        <Form.Item>
-                            <Progress
-                                percent={Math.floor(progress)}
-                                status="active"
-                                strokeColor={{
-                                    '0%': '#108ee9',
-                                    '100%': '#87d068',
-                                }}
-                            />
+                        <Form.Item style={{ width: '100%' }}>
+                            <div style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '12px',
+                                background: '#f5f5f5',
+                                padding: '16px',
+                                borderRadius: '8px'
+                            }}>
+                                {stages.map((stage, index) => (
+                                    <div key={stage.key} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '12px'
+                                    }}>
+                                        {stage.completed ? (
+                                            <CheckCircleFilled style={{ color: '#52c41a', fontSize: '20px' }} />
+                                        ) : stage.progress > 0 ? (
+                                            <LoadingOutlined style={{ color: '#1890ff', fontSize: '20px' }} />
+                                        ) : (
+                                            <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '1px solid #d9d9d9' }} />
+                                        )}
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                marginBottom: '4px'
+                                            }}>
+                                                <span style={{ color: stage.completed ? '#52c41a' : stage.progress > 0 ? '#1890ff' : '#666' }}>
+                                                    {stage.title}
+                                                </span>
+                                                {stage.progress > 0 && !stage.completed && (
+                                                    <span style={{ color: '#1890ff' }}>
+                                                        {Math.floor(stage.progress)}%
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {stage.progress > 0 && !stage.completed && (
+                                                <Progress
+                                                    percent={stage.progress}
+                                                    size="small"
+                                                    showInfo={false}
+                                                    strokeColor="#1890ff"
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </Form.Item>
                     )}
 

@@ -17,5 +17,5 @@ spring:
 
 logging:
   level:
-    com.anner: DEBUG
-    org.springframework.web: DEBUG 
+    com.anner: INFO
+    org.springframework.web: INFO
