@@ -1,6 +1,4 @@
-package com.anner.rag.model;
-
-import java.util.List;
+package com.anner.embed.model;
 
 import org.springframework.web.multipart.MultipartFile;
 

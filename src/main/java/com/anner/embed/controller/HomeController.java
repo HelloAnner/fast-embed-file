@@ -1,4 +1,4 @@
-package com.anner.rag.controller;
+package com.anner.embed.controller;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;

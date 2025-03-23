@@ -1,4 +1,4 @@
-package com.anner.rag.model;
+package com.anner.embed.model;
 
 import java.time.LocalDateTime;
 

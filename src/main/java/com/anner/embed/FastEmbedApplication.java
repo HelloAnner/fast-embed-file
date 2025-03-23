@@ -1,4 +1,4 @@
-package com.anner.rag;
+package com.anner.embed;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

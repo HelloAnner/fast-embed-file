@@ -1,4 +1,4 @@
-package com.anner.rag.util;
+package com.anner.embed.util;
 
 import java.io.File;
 import java.io.IOException;

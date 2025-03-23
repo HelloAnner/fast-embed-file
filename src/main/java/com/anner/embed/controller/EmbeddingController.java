@@ -1,4 +1,4 @@
-package com.anner.rag.controller;
+package com.anner.embed.controller;
 
 import java.io.File;
 import java.util.Map;
@@ -16,14 +16,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.anner.rag.exception.RagErrorCode;
-import com.anner.rag.exception.RagException;
-import com.anner.rag.model.ApiResponse;
-import com.anner.rag.model.EmbeddingConfig;
-import com.anner.rag.model.Task;
-import com.anner.rag.model.Task.TaskStatus;
-import com.anner.rag.service.EmbeddingService;
-import com.anner.rag.service.TaskService;
+import com.anner.embed.exception.RagErrorCode;
+import com.anner.embed.exception.RagException;
+import com.anner.embed.model.ApiResponse;
+import com.anner.embed.model.EmbeddingConfig;
+import com.anner.embed.model.Task;
+import com.anner.embed.model.Task.TaskStatus;
+import com.anner.embed.service.EmbeddingService;
+import com.anner.embed.service.TaskService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

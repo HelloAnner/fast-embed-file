@@ -1,4 +1,4 @@
-package com.anner.rag.controller;
+package com.anner.embed.controller;
 
 import java.util.List;
 
@@ -8,9 +8,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.anner.rag.model.ApiResponse;
-import com.anner.rag.model.Task;
-import com.anner.rag.service.TaskService;
+import com.anner.embed.model.ApiResponse;
+import com.anner.embed.model.Task;
+import com.anner.embed.service.TaskService;
 
 import lombok.RequiredArgsConstructor;
 

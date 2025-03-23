@@ -1,4 +1,4 @@
-package com.anner;
+package com.anner.embed;
 
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;

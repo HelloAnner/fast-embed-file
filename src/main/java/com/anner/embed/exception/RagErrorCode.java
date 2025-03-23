@@ -1,4 +1,4 @@
-package com.anner.rag.exception;
+package com.anner.embed.exception;
 
 import lombok.Getter;
 

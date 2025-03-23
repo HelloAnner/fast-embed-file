@@ -1,8 +1,8 @@
-package com.anner.rag.service;
+package com.anner.embed.service;
 
 import java.util.List;
 
-import com.anner.rag.model.Task;
+import com.anner.embed.model.Task;
 
 public interface TaskService {
     Task createTask(String fileName, String modelType);

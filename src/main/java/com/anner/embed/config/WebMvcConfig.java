@@ -1,4 +1,4 @@
-package com.anner.rag.config;
+package com.anner.embed.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;

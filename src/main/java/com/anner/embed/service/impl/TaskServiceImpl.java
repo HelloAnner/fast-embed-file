@@ -1,4 +1,4 @@
-package com.anner.rag.service.impl;
+package com.anner.embed.service.impl;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -9,9 +9,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
 
-import com.anner.rag.model.Task;
-import com.anner.rag.model.Task.TaskStatus;
-import com.anner.rag.service.TaskService;
+import com.anner.embed.model.Task;
+import com.anner.embed.model.Task.TaskStatus;
+import com.anner.embed.service.TaskService;
 
 import lombok.extern.slf4j.Slf4j;
 

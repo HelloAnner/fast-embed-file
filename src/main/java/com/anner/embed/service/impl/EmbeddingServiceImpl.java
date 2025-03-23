@@ -1,4 +1,4 @@
-package com.anner.rag.service.impl;
+package com.anner.embed.service.impl;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -21,14 +21,14 @@ import org.apache.commons.io.FileUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import com.anner.LLM;
-import com.anner.rag.exception.RagErrorCode;
-import com.anner.rag.exception.RagException;
-import com.anner.rag.model.EmbeddingConfig;
-import com.anner.rag.model.Task;
-import com.anner.rag.service.EmbeddingService;
-import com.anner.rag.service.TaskService;
-import com.anner.rag.util.FileProcessor;
+import com.anner.embed.LLM;
+import com.anner.embed.exception.RagErrorCode;
+import com.anner.embed.exception.RagException;
+import com.anner.embed.model.EmbeddingConfig;
+import com.anner.embed.model.Task;
+import com.anner.embed.service.EmbeddingService;
+import com.anner.embed.service.TaskService;
+import com.anner.embed.util.FileProcessor;
 
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;

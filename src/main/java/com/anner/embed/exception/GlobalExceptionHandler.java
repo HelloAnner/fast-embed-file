@@ -1,4 +1,4 @@
-package com.anner.rag.exception;
+package com.anner.embed.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
-import com.anner.rag.model.ApiResponse;
+import com.anner.embed.model.ApiResponse;
 
 import lombok.extern.slf4j.Slf4j;
 
