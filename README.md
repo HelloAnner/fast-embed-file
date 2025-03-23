@@ -1,5 +1,3 @@
-# 文档向量化工具 (Document Vectorization Tool)
-
 ![](docs/index.png)
 
 
@@ -47,21 +45,10 @@
 - Node.js 16 或更高版本
 - Maven 3.6 或更高版本
 
-### 后端部署
-1. 克隆项目
-```bash
-git clone [项目地址]
-cd fast-embed
-```
+### docker 部署
 
-2. 编译打包
 ```bash
-./gradlew clean buildAll
-```
-
-3. 运行应用
-```bash
-java -jar fast-embed-1.0.0.jar
+docker-compose up -d
 ```
 
 ### 访问应用
@@ -85,12 +72,6 @@ http://localhost:18080
 3. API 密钥：使用模型服务时需要提供有效的 API 密钥
 4. 临时文件：处理完成后会自动清理临时文件
 
-## 技术栈
-
-- 后端：Spring Boot
-- 前端：React + Ant Design
-- 向量化：LangChain4j
-- 构建工具：Maven + Vite
 
 ## 开发计划
 
