@@ -1,15 +1,16 @@
-import { ConfigProvider } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
 import React from 'react';
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import EmbeddingConfig from './components/EmbeddingConfig';
+import TaskManager from './components/TaskManager';
 
 const App: React.FC = () => {
     return (
-        <ConfigProvider locale={zhCN}>
-            <div className="App">
-                <EmbeddingConfig />
-            </div>
-        </ConfigProvider>
+        <Router>
+            <Routes>
+                <Route path="/" element={<EmbeddingConfig />} />
+                <Route path="/tasks" element={<TaskManager />} />
+            </Routes>
+        </Router>
     );
 };
 

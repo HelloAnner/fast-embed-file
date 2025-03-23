@@ -1,21 +1,22 @@
-import { DownloadOutlined, FileTextOutlined, UploadOutlined } from '@ant-design/icons';
-import { Button, Card, Form, Input, InputNumber, Progress, Select, Typography, Upload, message } from 'antd';
+import { DownloadOutlined, FileTextOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons';
+import { Button, Card, Form, Input, InputNumber, message, Progress, Select, Space, Typography, Upload } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const { Option } = Select;
 const { Title } = Typography;
 
 // 添加模型类型列表
 const MODEL_TYPES = [
-    { value: 'text-embedding-v1', label: '通义千问 text-embedding-v1' },
-    { value: 'doubao-embedding-text-240715', label: '豆包 doubao-embedding-text-240715' }
+    { value: 'doubao-embedding-text-240715', label: '豆包 doubao-embedding-text-240715' },
+    { value: 'text-embedding-v1', label: '通义千问 text-embedding-v1' }
 ];
 
 // 添加API地址列表
 const API_URLS = [
-    { value: 'https://dashscope.aliyuncs.com/compatible-mode/v1', label: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-    { value: 'https://ark.cn-beijing.volces.com/api/v3', label: 'https://ark.cn-beijing.volces.com/api/v3' }
+    { value: 'https://ark.cn-beijing.volces.com/api/v3', label: 'https://ark.cn-beijing.volces.com/api/v3' },
+    { value: 'https://dashscope.aliyuncs.com/compatible-mode/v1', label: 'https://dashscope.aliyuncs.com/compatible-mode/v1' }
 ];
 
 // 错误码映射
@@ -49,32 +50,47 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
     const [processing, setProcessing] = useState(false);
     const [completed, setCompleted] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+    const navigate = useNavigate();
 
     useEffect(() => {
         let intervalId: ReturnType<typeof setInterval>;
-        if (processing) {
+        if (processing && currentTaskId && currentTaskId !== 'COMPLETED') {
             intervalId = setInterval(async () => {
                 try {
-                    const response = await axios.get('/api/embedding/progress');
+                    const response = await axios.get(`/api/tasks/${currentTaskId}`);
                     if (response.data.success) {
-                        const progress = response.data.data.progress;
-                        setProgress(progress);
-                        if (progress >= 100) {
+                        const task = response.data.data;
+                        // 确保进度是一个有效的数字
+                        const currentProgress = typeof task.progress === 'number' ? task.progress : 0;
+                        setProgress(currentProgress);
+
+                        if (task.status === 'COMPLETED') {
                             setProcessing(false);
                             setCompleted(true);
+                            setProgress(100);
                             clearInterval(intervalId);
                             message.success('向量化处理完成！');
-                            form.resetFields(['file']); // Reset only the file field
+                            form.resetFields(['file']);
+                        } else if (task.status === 'FAILED') {
+                            setProcessing(false);
+                            setProgress(0);
+                            clearInterval(intervalId);
+                            message.error(task.errorMessage || '处理失败');
+                        } else if (task.status === 'CANCELLED') {
+                            setProcessing(false);
+                            setProgress(0);
+                            clearInterval(intervalId);
+                            message.info('任务已取消');
                         }
                     } else {
-                        message.error(response.data.message || '获取进度失败');
-                        setProcessing(false);
-                        clearInterval(intervalId);
+                        throw new Error(response.data.message || '获取进度失败');
                     }
                 } catch (error) {
                     console.error('获取进度失败:', error);
                     handleError(error);
                     setProcessing(false);
+                    setProgress(0);
                     clearInterval(intervalId);
                 }
             }, 1000);
@@ -84,7 +100,7 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                 clearInterval(intervalId);
             }
         };
-    }, [processing, form]);
+    }, [processing, currentTaskId, form]);
 
     const handleError = (error: any) => {
         if (error.response?.data) {
@@ -97,10 +113,27 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
         }
     };
 
+    const handleCancel = async () => {
+        if (currentTaskId) {
+            try {
+                const response = await axios.post(`/api/tasks/${currentTaskId}/cancel`);
+                if (response.data.success) {
+                    message.success('任务已取消');
+                    setProcessing(false);
+                    setCurrentTaskId(null);
+                }
+            } catch (error) {
+                console.error('取消任务失败:', error);
+                message.error('取消任务失败');
+            }
+        }
+    };
+
     const onFinish = async (values: any) => {
         try {
             setProcessing(true);
             setCompleted(false);
+            setProgress(0); // 重置进度
             const formData = new FormData();
             formData.append('file', values.file[0].originFileObj);
             formData.append('modelType', values.modelType);
@@ -115,33 +148,51 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                 },
             });
 
-            if (!response.data.success) {
-                throw new Error(response.data.message);
+            if (response.data.success) {
+                const taskId = response.data.data?.taskId;
+                if (taskId === 'COMPLETED') {
+                    // 同步完成的情况
+                    setProcessing(false);
+                    setCompleted(true);
+                    setProgress(100);
+                    message.success('向量化处理完成！');
+                    form.resetFields(['file']);
+                } else if (taskId) {
+                    // 异步处理的情况
+                    setCurrentTaskId(taskId);
+                    setProgress(0); // 开始异步处理时重置进度
+                } else {
+                    throw new Error('无效的任务ID');
+                }
+            } else {
+                throw new Error(response.data.message || '处理失败');
             }
         } catch (error) {
             console.error('处理失败:', error);
             handleError(error);
             setProcessing(false);
             setCompleted(false);
+            setProgress(0);
         }
     };
 
     const handleDownload = async () => {
         try {
-            const response = await axios.get('/api/embedding/download', {
-                responseType: 'blob'
-            });
-            const url = window.URL.createObjectURL(new Blob([response.data]));
+            if (!currentTaskId) {
+                message.error('无法下载文件：任务ID不存在');
+                return;
+            }
+            // 创建一个隐藏的 a 标签来下载文件
             const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', 'vector-data.json');
+            link.href = `/api/embedding/download/${currentTaskId}`;
+            link.target = '_blank'; // 在新标签页中打开
+            link.rel = 'noopener noreferrer'; // 安全性设置
             document.body.appendChild(link);
             link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
+            document.body.removeChild(link);
         } catch (error) {
             console.error('下载失败:', error);
-            handleError(error);
+            message.error('下载失败，请重试');
         }
     };
 
@@ -162,12 +213,31 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
             flexDirection: 'column',
             alignItems: 'center'
         }}>
-            <div style={{ textAlign: 'center', marginBottom: 40 }}>
-                <FileTextOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 16 }} />
-                <Title level={2} style={{ margin: 0 }}>文档向量化工具</Title>
-                <Typography.Text type="secondary">
-                    支持处理 JSON 和 Markdown 格式的压缩文件
-                </Typography.Text>
+            <div style={{
+                textAlign: 'center',
+                marginBottom: 40,
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+            }}>
+                <div style={{ flex: 1 }}></div>
+                <div style={{ textAlign: 'center' }}>
+                    <FileTextOutlined style={{ fontSize: 48, color: '#1890ff', marginBottom: 16 }} />
+                    <Title level={2} style={{ margin: 0 }}>文档向量化工具</Title>
+                    <Typography.Text type="secondary">
+                        支持处理 JSON 和 Markdown 格式的压缩文件
+                    </Typography.Text>
+                </div>
+                <div style={{ flex: 1, textAlign: 'right' }}>
+                    <Button
+                        type="link"
+                        icon={<SettingOutlined />}
+                        onClick={() => navigate('/tasks')}
+                    >
+                        任务管理
+                    </Button>
+                </div>
             </div>
 
             <Card style={{ width: '100%', borderRadius: 8 }} bordered={false}>
@@ -259,20 +329,36 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                     </div>
 
                     <Form.Item style={{ marginBottom: processing || completed ? 24 : 0 }}>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            loading={processing}
-                            disabled={completed}
-                            size="large"
-                            style={{
-                                width: '100%',
-                                height: '48px',
-                                fontSize: '16px'
-                            }}
-                        >
-                            开始向量化
-                        </Button>
+                        <Space style={{ width: '100%', justifyContent: 'center' }}>
+                            <Button
+                                type="primary"
+                                htmlType="submit"
+                                loading={processing}
+                                disabled={completed}
+                                size="large"
+                                style={{ 
+                                    width: processing ? '200px' : '100%',
+                                    height: '48px',
+                                    fontSize: '16px'
+                                }}
+                            >
+                                开始向量化
+                            </Button>
+                            {processing && (
+                                <Button
+                                    danger
+                                    size="large"
+                                    onClick={handleCancel}
+                                    style={{
+                                        width: '120px',
+                                        height: '48px',
+                                        fontSize: '16px'
+                                    }}
+                                >
+                                    取消任务
+                                </Button>
+                            )}
+                        </Space>
                     </Form.Item>
 
                     {processing && (

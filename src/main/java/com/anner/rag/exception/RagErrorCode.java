@@ -37,7 +37,13 @@ public enum RagErrorCode {
     // 参数验证错误 (6000-6999)
     INVALID_PARAMETER("6001", "无效的参数"),
     MISSING_PARAMETER("6002", "缺少必要参数"),
-    PARAMETER_OUT_OF_RANGE("6003", "参数超出范围");
+    PARAMETER_OUT_OF_RANGE("6003", "参数超出范围"),
+
+    // 任务相关错误 (7000-7999)
+    TASK_NOT_FOUND("7001", "任务不存在"),
+    TASK_CANCELLED("7002", "任务已取消"),
+    TASK_ALREADY_COMPLETED("7003", "任务已完成"),
+    TASK_ALREADY_CANCELLED("7004", "任务已被取消");
 
     private final String code;
     private final String message;

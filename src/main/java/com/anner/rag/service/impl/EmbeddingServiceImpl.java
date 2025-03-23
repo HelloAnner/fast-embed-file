@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.ArchiveInputStream;
@@ -23,7 +22,9 @@ import com.anner.LLM;
 import com.anner.rag.exception.RagErrorCode;
 import com.anner.rag.exception.RagException;
 import com.anner.rag.model.EmbeddingConfig;
+import com.anner.rag.model.Task;
 import com.anner.rag.service.EmbeddingService;
+import com.anner.rag.service.TaskService;
 import com.anner.rag.util.FileProcessor;
 
 import dev.langchain4j.data.embedding.Embedding;
@@ -35,13 +36,12 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Service
 public class EmbeddingServiceImpl implements EmbeddingService {
-    private final AtomicInteger totalSegments = new AtomicInteger(0);
-    private final AtomicInteger processedSegments = new AtomicInteger(0);
-    private String currentVectorFile;
+    private final TaskService taskService;
     private static final String VECTOR_DIR = "vectors";
     private static final String UPLOAD_DIR = "upload_files";
 
-    public EmbeddingServiceImpl() {
+    public EmbeddingServiceImpl(TaskService taskService) {
+        this.taskService = taskService;
         try {
             // 确保向量文件目录和上传文件目录存在
             Files.createDirectories(Paths.get(VECTOR_DIR).toAbsolutePath());
@@ -53,18 +53,12 @@ public class EmbeddingServiceImpl implements EmbeddingService {
     }
 
     @Override
-    public CompletableFuture<Void> processEmbedding(EmbeddingConfig config) {
+    public CompletableFuture<Void> processEmbedding(String taskId,EmbeddingConfig config) {
         try {
             validateConfig(config);
 
-            // 重置进度和当前文件
-            totalSegments.set(0);
-            processedSegments.set(0);
-            currentVectorFile = null;
-
             // 生成唯一的工作目录
-            String workDirName = UUID.randomUUID().toString();
-            File workDir = new File(UPLOAD_DIR, workDirName);
+            File workDir = new File(UPLOAD_DIR, taskId);
             createDirectory(workDir);
 
             // 保存上传的压缩文件
@@ -86,9 +80,10 @@ public class EmbeddingServiceImpl implements EmbeddingService {
             // 异步处理向量化
             return CompletableFuture.runAsync(() -> {
                 try {
-                    processExtractedFiles(workDirName,config, extractDirPath);
+                    processExtractedFiles(config, extractDirPath, taskId);
                 } catch (Exception e) {
                     log.error("向量化处理失败", e);
+                    taskService.failTask(taskId, e.getMessage());
                     throw new RagException(RagErrorCode.VECTORIZATION_FAILED, e);
                 }
             });
@@ -163,7 +158,7 @@ public class EmbeddingServiceImpl implements EmbeddingService {
         }
     }
 
-    private void processExtractedFiles(String uuid,EmbeddingConfig config, String extractDirPath) {
+    private void processExtractedFiles(EmbeddingConfig config, String extractDirPath, String taskId) {
         try {
             // 处理解压后的文件
             List<TextSegment> segments = FileProcessor.processFiles(
@@ -171,71 +166,84 @@ public class EmbeddingServiceImpl implements EmbeddingService {
                     config.getMaxTokensPerChunk(),
                     config.getOverlapTokens());
 
-            totalSegments.set(segments.size());
+            // 更新任务的总段数
+            taskService.updateTaskProgress(taskId, 0, segments.size());
 
             // 执行向量化
-            InMemoryEmbeddingStore<TextSegment> embeddingStore = generateEmbeddingStore(config, segments);
+            InMemoryEmbeddingStore<TextSegment> embeddingStore = generateEmbeddingStore(config, segments, taskId);
 
             // 保存向量化的结果
-            saveVectorFile(uuid,embeddingStore, segments.size());
+            String vectorFilePath = saveVectorFile(taskId, embeddingStore, segments.size());
+
+            // 更新任务状态和向量文件路径
+            Task task = taskService.getTask(taskId);
+            task.setVectorFilePath(vectorFilePath);
+            taskService.completeTask(taskId);
         } catch (Exception e) {
             throw new RagException(RagErrorCode.VECTORIZATION_FAILED, e);
         }
     }
 
     private InMemoryEmbeddingStore<TextSegment> generateEmbeddingStore(EmbeddingConfig config,
-            List<TextSegment> segments) {
-        try {
-            EmbeddingModel embeddingModel = LLM.doubaoLLMEmbedding(config.getModelType(), config.getBaseUrl(),
-                    config.getApiKey());
-            InMemoryEmbeddingStore<TextSegment> embeddingStore = new InMemoryEmbeddingStore<>();
+            List<TextSegment> segments, String taskId) {
+        InMemoryEmbeddingStore<TextSegment> embeddingStore = new InMemoryEmbeddingStore<>();
+        EmbeddingModel embeddingModel = LLM.doubaoLLMEmbedding(config.getModelType(), config.getBaseUrl(),
+                config.getApiKey());
 
-            for (TextSegment segment : segments) {
-                try {
-                    Embedding embedding = embeddingModel.embed(segment.text()).content();
-                    embeddingStore.add(embedding, segment);
-                    processedSegments.incrementAndGet();
-                    log.info("向量化处理进度：{}%", getProgress());
-                } catch (Exception e) {
-                    throw new RagException(RagErrorCode.MODEL_ERROR, "处理文本段失败: " + segment.text());
-                }
+        int processedCount = 0;
+        for (TextSegment segment : segments) {
+            if (taskService.isTaskCancelled(taskId)) {
+                throw new RagException(RagErrorCode.TASK_CANCELLED, "任务已取消");
             }
 
-            return embeddingStore;
-        } catch (Exception e) {
-            throw new RagException(RagErrorCode.API_ERROR, e);
+            try {
+                Embedding embedding = embeddingModel.embed(segment).content();
+                embeddingStore.add(embedding, segment);
+                processedCount++;
+                // 更新任务进度
+                taskService.updateTaskProgress(taskId, processedCount, segments.size());
+                log.info("任务 {} ,向量化处理进度: {}%", taskId, taskService.getTask(taskId).getProgress());
+            } catch (Exception e) {
+                log.error("向量化处理失败: {}", e.getMessage());
+                throw new RagException(RagErrorCode.VECTORIZATION_FAILED, e);
+            }
         }
+
+        return embeddingStore;
     }
 
-    private void saveVectorFile(String uuid,InMemoryEmbeddingStore<TextSegment> embeddingStore, int segmentsSize) {
+    private String saveVectorFile(String uuid, InMemoryEmbeddingStore<TextSegment> embeddingStore, int segmentsSize) {
         try {
             String fileName = uuid + ".json";
             File vectorFile = new File(VECTOR_DIR, fileName);
+            log.debug("准备保存向量文件：{}", vectorFile.getAbsolutePath());
             embeddingStore.serializeToFile(vectorFile.getAbsolutePath());
-            currentVectorFile = fileName;
             log.info("向量化处理完成，共处理 {} 个文本段，保存到文件：{}", segmentsSize, vectorFile.getAbsolutePath());
+
+            // 验证文件是否成功保存
+            if (!vectorFile.exists()) {
+                log.error("向量文件保存失败：文件不存在 {}", vectorFile.getAbsolutePath());
+                throw new RagException(RagErrorCode.FILE_WRITE_ERROR, "向量文件保存失败");
+            }
+            if (!vectorFile.canRead()) {
+                log.error("向量文件保存失败：文件不可读 {}", vectorFile.getAbsolutePath());
+                throw new RagException(RagErrorCode.FILE_WRITE_ERROR, "向量文件不可读");
+            }
+            log.debug("向量文件保存成功，大小：{} bytes", vectorFile.length());
+            return vectorFile.getAbsolutePath();
         } catch (Exception e) {
+            log.error("保存向量文件失败", e);
             throw new RagException(RagErrorCode.FILE_WRITE_ERROR, e);
         }
     }
 
     @Override
     public double getProgress() {
-        int total = totalSegments.get();
-        if (total == 0)
-            return 0.0;
-        return (double) processedSegments.get() / total * 100;
+        throw new RagException(RagErrorCode.SYSTEM_ERROR, "该方法已废弃，请使用任务管理接口获取进度");
     }
 
     @Override
     public File getVectorFile() {
-        if (currentVectorFile == null) {
-            throw new RagException(RagErrorCode.FILE_NOT_FOUND, "向量化文件不存在");
-        }
-        File file = new File(VECTOR_DIR, currentVectorFile);
-        if (!file.exists()) {
-            throw new RagException(RagErrorCode.FILE_NOT_FOUND, "向量化文件不存在");
-        }
-        return file;
+        throw new RagException(RagErrorCode.SYSTEM_ERROR, "该方法已废弃，请使用任务管理接口获取文件");
     }
 }

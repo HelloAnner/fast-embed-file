@@ -8,7 +8,7 @@ import com.anner.rag.model.EmbeddingConfig;
 import org.apache.commons.compress.archivers.ArchiveException;
 
 public interface EmbeddingService {
-    CompletableFuture<Void> processEmbedding(EmbeddingConfig config) throws IOException, ArchiveException;
+    CompletableFuture<Void> processEmbedding(String taskId,EmbeddingConfig config) throws IOException, ArchiveException;
 
     double getProgress();
 
