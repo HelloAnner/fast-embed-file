@@ -1,21 +1,18 @@
 package com.anner.rag.util;
 
-import java.io.BufferedInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
+import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.compress.archivers.ArchiveEntry;
-import org.apache.commons.compress.archivers.ArchiveInputStream;
-import org.apache.commons.compress.archivers.ArchiveStreamFactory;
+import com.anner.rag.RagConstants;
+import dev.langchain4j.model.openai.OpenAiEmbeddingModelName;
+import dev.langchain4j.model.openai.OpenAiTokenizer;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.io.IOUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,31 +25,43 @@ import dev.langchain4j.data.segment.TextSegment;
 
 public class FileProcessor {
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String DEFAULT_MODEL_TYPE = "doubao-embedding-text-240715";
 
-    public static List<TextSegment> processCompressedFile(String filePath, int maxTokensPerChunk, int overlapTokens)
+    public static List<TextSegment> processFiles(String directoryPath, int maxTokensPerChunk, int overlapTokens)
             throws Exception {
         List<TextSegment> segments = new ArrayList<>();
+        File directory = new File(directoryPath);
 
-        try (InputStream is = new FileInputStream(filePath);
-                ArchiveInputStream archiveInputStream = new ArchiveStreamFactory()
-                        .createArchiveInputStream(new BufferedInputStream(is))) {
+        if (!directory.exists() || !directory.isDirectory()) {
+            throw new IllegalArgumentException("提供的路径不是一个有效的目录：" + directoryPath);
+        }
 
-            ArchiveEntry entry;
-            while ((entry = archiveInputStream.getNextEntry()) != null) {
-                if (!entry.isDirectory()) {
-                    String extension = FilenameUtils.getExtension(entry.getName()).toLowerCase();
-                    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-                    IOUtils.copy(archiveInputStream, outputStream);
-                    String content = outputStream.toString(StandardCharsets.UTF_8.name());
+        // 递归处理目录中的所有文件
+        processDirectory(directory, segments, maxTokensPerChunk, overlapTokens);
 
-                    // 根据文件类型处理内容
+        return segments;
+    }
+
+    private static void processDirectory(File directory, List<TextSegment> segments, int maxTokensPerChunk,
+                                         int overlapTokens)
+            throws Exception {
+        File[] files = directory.listFiles();
+        if (files == null)
+            return;
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                processDirectory(file, segments, maxTokensPerChunk, overlapTokens);
+            } else {
+                String extension = FilenameUtils.getExtension(file.getName()).toLowerCase();
+                if (extension.equals("json") || extension.equals("md")) {
                     Document document;
+                    String content = FileUtils.readFileToString(file, StandardCharsets.UTF_8);
+
                     if (extension.equals("json")) {
-                        document = processJsonContent(content, entry.getName());
-                    } else if (extension.equals("md")) {
-                        document = processMarkdownContent(content, entry.getName());
+                        document = processJsonContent(content, file.getName());
                     } else {
-                        continue;
+                        document = processMarkdownContent(content, file.getName());
                     }
 
                     // 处理文件内容
@@ -61,8 +70,6 @@ public class FileProcessor {
                 }
             }
         }
-
-        return segments;
     }
 
     private static Document processJsonContent(String content, String fileName) throws IOException {
@@ -73,6 +80,7 @@ public class FileProcessor {
         // 添加基础元数据
         metadata.put("source_type", "json");
         metadata.put("file_name", fileName);
+        metadata.put("model_type", DEFAULT_MODEL_TYPE);
 
         // 处理JSON字段
         for (Iterator<Map.Entry<String, JsonNode>> it = jsonNode.fields(); it.hasNext();) {
@@ -96,6 +104,7 @@ public class FileProcessor {
         // 添加基础元数据
         metadata.put("source_type", "markdown");
         metadata.put("file_name", fileName);
+        metadata.put("model_type", DEFAULT_MODEL_TYPE);
 
         // 提取标题（如果有）
         String[] lines = content.split("\n");
@@ -112,11 +121,12 @@ public class FileProcessor {
 
     private static List<TextSegment> segmentText(Document document, int maxTokensPerChunk, int overlapTokens) {
         // 创建文档分割器
+        OpenAiTokenizer tokenizer = new OpenAiTokenizer(OpenAiEmbeddingModelName.TEXT_EMBEDDING_ADA_002);
+
         DocumentSplitter splitter = DocumentSplitters.recursive(
-                maxTokensPerChunk, // 最大分块大小
-                overlapTokens, // 重叠大小
-                null // 使用默认的分词器
-        );
+               maxTokensPerChunk,
+              overlapTokens,
+                tokenizer);
 
         // 分割文档并返回文本段
         return splitter.split(document);

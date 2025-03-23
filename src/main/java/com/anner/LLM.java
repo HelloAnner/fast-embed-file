@@ -17,9 +17,9 @@ public class LLM {
      *
      * @return Embedding模型
      */
-    public static EmbeddingModel doubaoLLMEmbedding(String baseUrl, String apiKey) {
+    public static EmbeddingModel doubaoLLMEmbedding(String modelName,String baseUrl, String apiKey) {
         return OpenAiEmbeddingModel.builder()
-                .modelName("doubao-embedding-text-240715")
+                .modelName(modelName)
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
                 .build();

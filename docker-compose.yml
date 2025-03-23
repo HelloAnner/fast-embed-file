@@ -1,0 +1,24 @@
+services:
+  jira-ai-flow:
+    image: amazoncorretto:17
+    container_name: fast-embed
+    working_dir: /app
+    volumes:
+      - ./fast-embed-1.0.0.jar:/app/fast-embed-1.0.0.jar
+      - ./logs:/app/logs
+      - ./upload_files:/app/upload_files
+      - ./vectors:/app/vectors
+    ports:
+      - "18080:18080"
+    environment:
+      - TZ=Asia/Shanghai
+    command: [ "java", "-jar", "fast-embed-1.0.0.jar" ]
+    #    depends_on:
+    #      db:
+    #        condition: service_healthy
+    networks:
+      - fast-embed-network
+
+networks:
+  fast-embed-network:
+    driver: bridge

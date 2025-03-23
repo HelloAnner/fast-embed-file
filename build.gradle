@@ -1,19 +1,167 @@
 plugins {
     id 'java'
+    id 'java-library'
+    id 'maven-publish'
+    id 'org.springframework.boot' version '3.2.3'
+    id 'io.spring.dependency-management' version '1.1.4'
 }
 
-group = 'org.example'
-version = '1.0-SNAPSHOT'
+def javaVersion = System.getProperty('java.version')
+def javaHome = System.getProperty('java.home')
+
+println "Current Java version: $javaVersion"
+println "Current Java home: $javaHome"
+
+if (!javaVersion.startsWith('17')) {
+    throw new GradleException("This build requires Java 17. Current version is $javaVersion. Please use Java 17 or newer.")
+}
+
+group = 'com.anner'
+version = '1.0.0'
 
 repositories {
     mavenCentral()
+    maven { url = uri("https://maven.aliyun.com/repository/public") }
 }
 
 dependencies {
-    testImplementation platform('org.junit:junit-bom:5.10.0')
-    testImplementation 'org.junit.jupiter:junit-jupiter'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    implementation 'org.springframework:spring-context-support:5.3.23'
+    implementation 'org.springframework.boot:spring-boot-starter-log4j2'
+    implementation 'org.springframework.retry:spring-retry'
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+    implementation 'org.springframework:spring-aspects'
+
+    implementation 'dev.langchain4j:langchain4j-open-ai:1.0.0-beta1'
+    implementation 'dev.langchain4j:langchain4j:1.0.0-beta1'
+
+    api 'org.commonmark:commonmark:0.17.2'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'junit:junit:4.13.2'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+
+    configurations.all {
+        exclude group: 'org.slf4j', module: 'slf4j-simple'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-to-slf4j'
+        exclude group: 'org.slf4j', module: 'reload4j'
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
+    }
+
+    implementation 'org.apache.commons:commons-compress:1.26.0'
+    implementation 'commons-io:commons-io:2.15.1'
+}
+
+java {
+    sourceCompatibility = '17'
+    targetCompatibility = JavaVersion.VERSION_17
+    withJavadocJar()
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
 }
 
 test {
     useJUnitPlatform()
+}
+
+def frontendDir = "$projectDir/src/main/resources/static/frontend"
+
+// 清理前端构建目录
+task cleanFrontend(type: Delete) {
+    delete "$frontendDir/dist"
+    delete "$frontendDir/node_modules"
+}
+
+task installFrontend(type: Exec) {
+    workingDir frontendDir
+    inputs.file "$frontendDir/package.json"
+    outputs.dir "$frontendDir/node_modules"
+    
+    doFirst {
+        println "Installing frontend dependencies in $frontendDir"
+        println "Current directory: ${workingDir.absolutePath}"
+    }
+    
+    if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
+        commandLine 'cmd', '/c', 'npm', 'install'
+    } else {
+        commandLine 'npm', 'install'
+    }
+}
+
+// 构建前端项目
+task buildFrontend(type: Exec) {
+    workingDir frontendDir
+    inputs.dir "$frontendDir/src"
+    inputs.file "$frontendDir/package.json"
+    outputs.dir "$frontendDir/dist"
+    
+    dependsOn installFrontend
+    
+    doFirst {
+        println "Building frontend in $frontendDir"
+        println "Current directory: ${workingDir.absolutePath}"
+    }
+    
+    if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
+        commandLine 'cmd', '/c', 'npm', 'run', 'build'
+    } else {
+        commandLine 'npm', 'run', 'build'
+    }
+}
+
+// 将前端构建加入到Spring Boot的构建流程中
+processResources.dependsOn buildFrontend
+clean.dependsOn cleanFrontend
+
+bootJar {
+    dependsOn buildFrontend
+    doFirst {
+        println "Building JAR with frontend resources"
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from("$frontendDir/dist") {
+        into 'BOOT-INF/classes/static/frontend/dist'
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
+}
+
+jar {
+    enabled = false
+}
+
+// 创建一个任务来复制JAR到根目录
+task copyJarToRoot(type: Copy) {
+    dependsOn bootJar
+    from "${buildDir}/libs"
+    into projectDir
+    include "*-${version}.jar"
+    
+    doFirst {
+        println "Copying JAR to project root directory"
+    }
+    doLast {
+        println "JAR has been copied to ${projectDir}"
+    }
+}
+
+// 修改buildAll任务，包含复制JAR的步骤
+task buildAll {
+    dependsOn clean, bootJar, copyJarToRoot
+    doFirst {
+        println "Starting complete build process..."
+    }
+    doLast {
+        println "Build completed. JAR file is available in project root directory"
+        println "JAR location: ${projectDir}/fast-embed-${version}.jar"
+    }
+    description = '清理项目、构建前端和后端，并打包成可执行的jar'
 }
