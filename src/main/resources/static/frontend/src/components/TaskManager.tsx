@@ -1,4 +1,4 @@
-import { CheckCircleFilled, CloseCircleFilled, DownloadOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons';
+import { CheckCircleFilled, CloseCircleFilled, DownloadOutlined, HomeOutlined, LoadingOutlined, StopOutlined } from '@ant-design/icons';
 import { Button, Card, message, Modal, Space, Table, Tag, Typography } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
@@ -129,51 +129,55 @@ const TaskManager: React.FC = () => {
             title: '文件名',
             dataIndex: 'fileName',
             key: 'fileName',
-            width: 200,
+            width: '25%',
+            ellipsis: true,
         },
         {
             title: '模型类型',
             dataIndex: 'modelType',
             key: 'modelType',
-            width: 200,
+            width: '15%',
+            ellipsis: true,
         },
         {
             title: '状态',
             dataIndex: 'status',
             key: 'status',
-            width: 120,
+            width: '10%',
             render: (status: string) => getStatusTag(status),
         },
         {
             title: '当前阶段',
             dataIndex: 'currentStage',
             key: 'currentStage',
-            width: 200,
+            width: '20%',
+            ellipsis: true,
         },
         {
-            title: '创建时间',
-            dataIndex: 'createTime',
-            key: 'createTime',
-            width: 180,
-        },
-        {
-            title: '更新时间',
-            dataIndex: 'updateTime',
-            key: 'updateTime',
-            width: 180,
+            title: '时间',
+            key: 'time',
+            width: '20%',
+            render: (_, record: Task) => (
+                <div style={{ fontSize: '12px' }}>
+                    <div>创建: {record.createTime}</div>
+                    <div>更新: {record.updateTime}</div>
+                </div>
+            ),
         },
         {
             title: '操作',
             key: 'action',
-            width: 200,
+            width: '10%',
             render: (_: any, record: Task) => (
-                <Space>
+                <Space size="small" direction="vertical" style={{ width: '100%' }}>
                     {record.status === 'RUNNING' && (
                         <Button
                             danger
                             type="primary"
                             icon={<StopOutlined />}
                             onClick={() => handleCancel(record.id)}
+                            size="small"
+                            style={{ width: '100%' }}
                         >
                             中断
                         </Button>
@@ -183,7 +187,8 @@ const TaskManager: React.FC = () => {
                             type="primary"
                             icon={<DownloadOutlined />}
                             onClick={() => handleDownload(record.id)}
-                            style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                            size="small"
+                            style={{ width: '100%', background: '#52c41a', borderColor: '#52c41a' }}
                         >
                             下载
                         </Button>
@@ -193,19 +198,65 @@ const TaskManager: React.FC = () => {
         },
     ];
 
+    const tableStyles = {
+        runningRow: {
+            backgroundColor: '#f0f9ff'
+        },
+        tableRow: {
+            '&:hover': {
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                transition: 'all 0.3s'
+            }
+        }
+    };
+
     return (
-        <div style={{ maxWidth: 1200, margin: '40px auto', padding: '0 24px' }}>
-            <Card bordered={false}>
-                <div style={{ marginBottom: 24, textAlign: 'center' }}>
-                    <Title level={2}>任务管理</Title>
+        <div style={{ maxWidth: '100%', margin: '20px auto', padding: '0 16px' }}>
+            <Card bordered={false} style={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                <div style={{ 
+                    marginBottom: 24, 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center' 
+                }}>
+                    <div style={{ flex: 1 }}>
+                        <Title level={3} style={{ margin: 0, color: '#1890ff', textAlign: 'center' }}>任务管理</Title>
+                    </div>
+                    <Button 
+                        type="primary" 
+                        icon={<HomeOutlined />}
+                        onClick={() => navigate('/')}
+                        style={{ 
+                            background: '#52c41a', 
+                            borderColor: '#52c41a',
+                            position: 'absolute',
+                            right: 24,
+                            top: 24
+                        }}
+                    >
+                        返回主页
+                    </Button>
                 </div>
                 <Table
                     columns={columns}
                     dataSource={tasks}
                     rowKey="id"
                     loading={loading}
-                    pagination={false}
-                    scroll={{ x: 1200 }}
+                    pagination={{
+                        pageSize: 10,
+                        showTotal: (total) => `共 ${total} 条记录`,
+                        showSizeChanger: true,
+                        showQuickJumper: true,
+                        size: 'small'
+                    }}
+                    size="small"
+                    style={{ marginTop: 16 }}
+                    onRow={(record) => ({
+                        style: {
+                            ...(record.status === 'RUNNING' ? tableStyles.runningRow : {}),
+                            ...tableStyles.tableRow
+                        }
+                    })}
                 />
             </Card>
         </div>
