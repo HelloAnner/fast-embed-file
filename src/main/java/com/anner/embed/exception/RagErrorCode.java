@@ -9,7 +9,8 @@ public enum RagErrorCode {
     FILE_NOT_FOUND("1002", "文件不存在"),
     FILE_TOO_LARGE("1003", "文件大小超过限制"),
     INVALID_FILE_FORMAT("1004", "无效的文件格式"),
-    FILE_EXTRACT_ERROR("1005", "文件解压失败"),
+    INVALID_FILE_TYPE("1005", "不支持的文件类型"),
+            FILE_EXTRACT_ERROR("1006", "文件解压失败"),
     FILE_DOWNLOAD_ERROR("1008", "文件下载失败"),
 
     // 目录相关错误 (2000-2999)

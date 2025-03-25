@@ -39,8 +39,8 @@ public class FileProcessor {
         
         if (file.getName().endsWith(".json")) {
             segments.addAll(processJsonContent(content, maxTokensPerChunk, overlapTokens));
-        } else if (file.getName().endsWith(".md")) {
-            segments.addAll(processMarkdownContent(content, maxTokensPerChunk, overlapTokens));
+        } else  {
+            segments.addAll(processContent(content, maxTokensPerChunk, overlapTokens));
         }
         
         return segments;
@@ -68,7 +68,7 @@ public class FileProcessor {
         }
     }
 
-    private static List<TextSegment> processMarkdownContent(String content, int maxTokensPerChunk, int overlapTokens) {
+    private static List<TextSegment> processContent(String content, int maxTokensPerChunk, int overlapTokens) {
         DocumentSplitter splitter = DocumentSplitters.recursive(
             maxTokensPerChunk,
             overlapTokens,

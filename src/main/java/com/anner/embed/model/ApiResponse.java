@@ -7,6 +7,7 @@ public class ApiResponse<T> {
     private boolean success;
     private String code;
     private String message;
+    private String detail;
     private T data;
 
     public static <T> ApiResponse<T> success(T data) {
@@ -27,6 +28,15 @@ public class ApiResponse<T> {
         response.setSuccess(false);
         response.setCode(code);
         response.setMessage(message);
+        return response;
+    }
+
+    public static <T> ApiResponse<T> error(String code, String message, String detail) {
+        ApiResponse<T> response = new ApiResponse<>();
+        response.setSuccess(false);
+        response.setCode(code);
+        response.setMessage(message);
+        response.setDetail(detail);
         return response;
     }
 }
