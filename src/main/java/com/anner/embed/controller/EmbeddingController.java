@@ -1,8 +1,17 @@
 package com.anner.embed.controller;
 
-import java.io.File;
-import java.util.Map;
-
+import com.anner.embed.LLM;
+import com.anner.embed.exception.RagErrorCode;
+import com.anner.embed.exception.RagException;
+import com.anner.embed.model.ApiResponse;
+import com.anner.embed.model.EmbeddingConfig;
+import com.anner.embed.model.Task;
+import com.anner.embed.model.Task.TaskStatus;
+import com.anner.embed.service.EmbeddingService;
+import com.anner.embed.service.TaskService;
+import dev.langchain4j.model.embedding.EmbeddingModel;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -16,17 +25,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.anner.embed.exception.RagErrorCode;
-import com.anner.embed.exception.RagException;
-import com.anner.embed.model.ApiResponse;
-import com.anner.embed.model.EmbeddingConfig;
-import com.anner.embed.model.Task;
-import com.anner.embed.model.Task.TaskStatus;
-import com.anner.embed.service.EmbeddingService;
-import com.anner.embed.service.TaskService;
-
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.io.File;
+import java.util.Map;
+import java.util.Objects;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 @Slf4j
 @RestController
@@ -38,7 +41,7 @@ public class EmbeddingController {
 
     @PostMapping("/process")
     public ApiResponse<Map<String, String>> processEmbedding(
-                    @RequestParam("file") MultipartFile file,
+            @RequestParam("file") MultipartFile file,
             @RequestParam("modelType") String modelType,
             @RequestParam("baseUrl") String baseUrl,
             @RequestParam("apiKey") String apiKey,
@@ -65,7 +68,7 @@ public class EmbeddingController {
             String taskId = task.getId();
 
             // 异步处理向量化
-            embeddingService.processEmbedding(taskId,config);
+            embeddingService.processEmbedding(taskId, config);
 
             // 返回任务ID
             return ApiResponse.success(Map.of("taskId", taskId));
@@ -127,6 +130,51 @@ public class EmbeddingController {
                 throw (RagException) e;
             }
             throw new RagException(RagErrorCode.FILE_DOWNLOAD_ERROR, e);
+        }
+    }
+
+    @PostMapping("/test")
+    public ApiResponse<Map<String, Object>> testConfig(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("modelType") String modelType,
+            @RequestParam("baseUrl") String baseUrl,
+            @RequestParam("apiKey") String apiKey) {
+        try {
+            // 1. 测试 API 连接
+            EmbeddingModel model = LLM.doubaoLLMEmbedding(modelType, baseUrl, apiKey);
+            String testText = "测试文本";
+            model.embed(testText);
+
+            // 2. 检查文件内容
+            if (!Objects.requireNonNull(file.getOriginalFilename()).toLowerCase().endsWith(".zip")) {
+                throw new RagException(RagErrorCode.INVALID_FILE_TYPE, "只支持ZIP格式的文件");
+            }
+
+            // 3. 检查ZIP文件内容
+            try (ZipInputStream zis = new ZipInputStream(file.getInputStream())) {
+                ZipEntry entry;
+                boolean hasMdFile = false;
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (entry.getName().toLowerCase().endsWith(".md")) {
+                        hasMdFile = true;
+                        break;
+                    }
+                }
+                if (!hasMdFile) {
+                    throw new RagException(RagErrorCode.INVALID_FILE_CONTENT, "ZIP文件中未找到Markdown文件");
+                }
+            }
+
+            return ApiResponse.success(Map.of(
+                    "message", "配置测试成功",
+                    "hasMdFile", true,
+                    "apiTested", true));
+        } catch (Exception e) {
+            log.error("配置测试失败", e);
+            if (e instanceof RagException) {
+                throw (RagException) e;
+            }
+            throw new RagException(RagErrorCode.CONFIG_TEST_FAILED, e.getMessage());
         }
     }
 }

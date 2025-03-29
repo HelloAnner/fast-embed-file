@@ -58,6 +58,8 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
     const [completed, setCompleted] = useState(false);
     const [progress, setProgress] = useState(0);
     const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+    const [configTested, setConfigTested] = useState(false);
+    const [testing, setTesting] = useState(false);
     const [stages, setStages] = useState<StageInfo[]>([
         { key: 'prepare', title: '准备处理文件', progress: 0, completed: false },
         { key: 'segment', title: '文本分段', progress: 0, completed: false },
@@ -164,11 +166,45 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
         }
     };
 
+    const handleTestConfig = async (values: any) => {
+        try {
+            setTesting(true);
+            const formData = new FormData();
+            formData.append('file', values.file[0].originFileObj);
+            formData.append('modelType', values.modelType);
+            formData.append('baseUrl', values.baseUrl);
+            formData.append('apiKey', values.apiKey);
+
+            const response = await axios.post('/api/embedding/test', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            if (response.data.success) {
+                message.success('配置测试成功');
+                setConfigTested(true);
+            } else {
+                throw new Error(response.data.message || '配置测试失败');
+            }
+        } catch (error) {
+            console.error('配置测试失败:', error);
+            handleError(error);
+        } finally {
+            setTesting(false);
+        }
+    };
+
     const onFinish = async (values: any) => {
+        if (!configTested) {
+            await handleTestConfig(values);
+            return;
+        }
+
         try {
             setProcessing(true);
             setCompleted(false);
-            setProgress(0); // 重置进度
+            setProgress(0);
             const formData = new FormData();
             formData.append('file', values.file[0].originFileObj);
             formData.append('modelType', values.modelType);
@@ -184,30 +220,15 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
             });
 
             if (response.data.success) {
-                const taskId = response.data.data?.taskId;
-                if (taskId === 'COMPLETED') {
-                    // 同步完成的情况
-                    setProcessing(false);
-                    setCompleted(true);
-                    setProgress(100);
-                    message.success('向量化处理完成！');
-                    form.resetFields(['file']);
-                } else if (taskId) {
-                    // 异步处理的情况
-                    setCurrentTaskId(taskId);
-                    setProgress(0); // 开始异步处理时重置进度
-                } else {
-                    throw new Error('无效的任务ID');
-                }
+                setCurrentTaskId(response.data.data.taskId);
+                message.success('任务已提交');
             } else {
-                throw new Error(response.data.message || '处理失败');
+                throw new Error(response.data.message || '提交失败');
             }
         } catch (error) {
-            console.error('处理失败:', error);
+            console.error('提交失败:', error);
             handleError(error);
             setProcessing(false);
-            setCompleted(false);
-            setProgress(0);
         }
     };
 
@@ -363,34 +384,70 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                         </Form.Item>
                     </div>
 
-                    <Form.Item style={{ marginBottom: processing || completed ? 24 : 0 }}>
+                    <Form.Item>
                         <Space style={{ width: '100%', justifyContent: 'center' }}>
-                            <Button
-                                type="primary"
-                                htmlType="submit"
-                                loading={processing}
-                                disabled={completed}
-                                size="large"
-                                style={{ 
-                                    width: processing ? '200px' : '100%',
-                                    height: '48px',
-                                    fontSize: '16px'
-                                }}
-                            >
-                                开始向量化
-                            </Button>
-                            {processing && (
+                            {!completed ? (
+                                <>
+                                    {!configTested ? (
+                                        <Button 
+                                            type="primary" 
+                                            htmlType="submit" 
+                                            loading={testing}
+                                            disabled={processing}
+                                            size="large"
+                                            style={{ 
+                                                width: processing ? '200px' : '100%',
+                                                height: '48px',
+                                                fontSize: '16px'
+                                            }}
+                                        >
+                                            测试配置
+                                        </Button>
+                                    ) : (
+                                        <Button 
+                                            type="primary" 
+                                            htmlType="submit" 
+                                            loading={processing}
+                                            disabled={!configTested}
+                                            size="large"
+                                            style={{ 
+                                                width: processing ? '200px' : '100%',
+                                                height: '48px',
+                                                fontSize: '16px'
+                                            }}
+                                        >
+                                            开始向量化
+                                        </Button>
+                                    )}
+                                    {processing && (
+                                        <Button 
+                                            danger
+                                            size="large"
+                                            onClick={handleCancel}
+                                            style={{
+                                                width: '120px',
+                                                height: '48px',
+                                                fontSize: '16px'
+                                            }}
+                                        >
+                                            取消任务
+                                        </Button>
+                                    )}
+                                </>
+                            ) : (
                                 <Button
-                                    danger
+                                    type="primary"
+                                    icon={<DownloadOutlined />}
+                                    onClick={handleDownload}
                                     size="large"
-                                    onClick={handleCancel}
                                     style={{
-                                        width: '120px',
+                                        width: '100%',
                                         height: '48px',
-                                        fontSize: '16px'
+                                        fontSize: '16px',
+                                        background: '#52c41a'
                                     }}
                                 >
-                                    取消任务
+                                    下载向量化结果
                                 </Button>
                             )}
                         </Space>
@@ -446,25 +503,6 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                                     </div>
                                 ))}
                             </div>
-                        </Form.Item>
-                    )}
-
-                    {completed && (
-                        <Form.Item>
-                            <Button
-                                type="primary"
-                                icon={<DownloadOutlined />}
-                                onClick={handleDownload}
-                                size="large"
-                                style={{
-                                    width: '100%',
-                                    height: '48px',
-                                    fontSize: '16px',
-                                    background: '#52c41a'
-                                }}
-                            >
-                                下载向量化结果
-                            </Button>
                         </Form.Item>
                     )}
                 </Form>

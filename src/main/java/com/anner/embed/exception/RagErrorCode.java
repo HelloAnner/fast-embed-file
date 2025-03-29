@@ -33,6 +33,9 @@ public enum RagErrorCode {
     // 系统错误 (5000-5999)
     SYSTEM_ERROR("5001", "系统内部错误"),
     UNEXPECTED_ERROR("5002", "未预期的错误"),
+    CONFIG_TEST_FAILED("5002", "配置测试失败"),
+            INVALID_FILE_TYPE("5003", "无效的文件类型"),
+    INVALID_FILE_CONTENT("5004", "无效的文件内容"),
 
     // 参数验证错误 (6000-6999)
     INVALID_PARAMETER("6001", "无效的参数"),
@@ -51,5 +54,13 @@ public enum RagErrorCode {
     RagErrorCode(String code, String message) {
         this.code = code;
         this.message = message;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public String getMessage() {
+        return message;
     }
 }
