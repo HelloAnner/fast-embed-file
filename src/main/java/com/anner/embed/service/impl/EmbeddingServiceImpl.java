@@ -169,9 +169,13 @@ public class EmbeddingServiceImpl implements EmbeddingService {
 
             // 处理解压后的文件
             Collection<File> files = FileUtils.listFiles(new File(extractDirPath),
-                    new String[] { "json", "md" }, true);
+                    new String[] { "json", "md", "txt" }, true);
             int totalFiles = files.size();
             log.info("共发现 {} 个文件需要处理", totalFiles);
+
+            if (totalFiles == 0) {
+                throw new RagException(RagErrorCode.FILE_NOT_FOUND, "压缩包中未找到可处理的文件（支持json、md、txt格式）");
+            }
 
             List<TextSegment> segments = new ArrayList<>();
             int processedFiles = 0;
@@ -182,19 +186,28 @@ public class EmbeddingServiceImpl implements EmbeddingService {
                 }
 
                 log.debug("正在处理文件：{}", file.getName());
-                List<TextSegment> fileSegments = FileProcessor.processFiles(
-                        Collections.singletonList(file),
-                        config.getMaxTokensPerChunk(),
-                        config.getOverlapTokens());
-                segments.addAll(fileSegments);
+                try {
+                    List<TextSegment> fileSegments = FileProcessor.processFiles(
+                            Collections.singletonList(file),
+                            config.getMaxTokensPerChunk(),
+                            config.getOverlapTokens());
+                    segments.addAll(fileSegments);
+                    log.debug("文件 {} 处理成功，生成段落数：{}", file.getName(), fileSegments.size());
+                } catch (Exception e) {
+                    log.warn("文件 {} 处理失败：{}", file.getName(), e.getMessage());
+                    // 继续处理其他文件
+                    continue;
+                }
 
                 processedFiles++;
                 double segmentProgress = (double) processedFiles / totalFiles * 100;
                 task.setSegmentProgress(segmentProgress);
                 task.setProgress(segmentProgress * 0.3); // 文本分段占总进度的30%
                 task.setUpdateTime(LocalDateTime.now());
-                log.debug("文件处理进度：{}/{}，当前文件：{}，生成段落数：{}",
-                        processedFiles, totalFiles, file.getName(), fileSegments.size());
+            }
+
+            if (segments.isEmpty()) {
+                throw new RagException(RagErrorCode.TEXT_PROCESS_ERROR, "未能从任何文件中提取出有效的文本内容");
             }
 
             log.info("文本分段完成，共生成 {} 个文本段", segments.size());

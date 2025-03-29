@@ -1,5 +1,5 @@
 import { CheckCircleFilled, DownloadOutlined, FileTextOutlined, LoadingOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons';
-import { Button, Card, Form, Input, InputNumber, message, Progress, Select, Space, Typography, Upload } from 'antd';
+import { Button, Card, Form, Input, InputNumber, message, Modal, Progress, Select, Space, Typography, Upload } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -9,8 +9,18 @@ const { Title } = Typography;
 
 // 添加模型类型列表
 const MODEL_TYPES = [
-    { value: 'doubao-embedding-text-240715', label: '豆包 doubao-embedding-text-240715' },
-    { value: 'text-embedding-v1', label: '通义千问 text-embedding-v1' }
+    {
+        value: 'doubao-embedding-text-240715',
+        label: '豆包 doubao-embedding-text-240715',
+        description: '请确保已在豆包平台开通该模型的使用权限',
+        warning: '使用前请确保：\n1. 已在豆包平台开通该模型的使用权限\n2. API Key 具有足够的调用额度\n3. API 地址配置正确'
+    },
+    {
+        value: 'text-embedding-v1',
+        label: '通义千问 text-embedding-v1',
+        description: '请确保已在通义千问平台开通该模型的使用权限',
+        warning: '使用前请确保：\n1. 已在通义千问平台开通该模型的使用权限\n2. API Key 具有足够的调用额度\n3. API 地址配置正确'
+    }
 ];
 
 // 添加API地址列表
@@ -141,9 +151,18 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
 
     const handleError = (error: any) => {
         if (error.response?.data) {
-            const { code, message: errorMessage } = error.response.data;
+            const { code, message: errorMessage, detail } = error.response.data;
             if (!error.response.data.success) {
-                message.error(ERROR_MESSAGES[code] || errorMessage || '处理失败，请重试');
+                // 使用 Modal 显示详细错误信息
+                Modal.error({
+                    title: errorMessage || '处理失败',
+                    content: (
+                        <div style={{ whiteSpace: 'pre-line' }}>
+                            {detail || ERROR_MESSAGES[code] || '处理失败，请重试'}
+                        </div>
+                    ),
+                    width: 500
+                });
             }
         } else {
             message.error('网络错误，请检查网络连接');
@@ -309,14 +328,34 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                     }}
                 >
                     <Form.Item
+                        label="向量化模型"
                         name="modelType"
-                        label="向量化模型类型"
-                        rules={[{ required: true, message: '请选择模型类型' }]}
+                        rules={[{ required: true, message: '请选择向量化模型' }]}
                     >
-                        <Select placeholder="请选择模型类型" size="large">
+                        <Select
+                            placeholder="请选择向量化模型"
+                            listHeight={200}
+                            optionLabelProp="label"
+                        >
                             {MODEL_TYPES.map(model => (
-                                <Option key={model.value} value={model.value}>
-                                    {model.label}
+                                <Option
+                                    key={model.value}
+                                    value={model.value}
+                                    label={model.label}
+                                    title={model.description}
+                                >
+                                    <div style={{ padding: '8px 0' }}>
+                                        <div style={{
+                                            fontWeight: 500,
+                                            marginBottom: '4px',
+                                            lineHeight: '20px'
+                                        }}>{model.label}</div>
+                                        <div style={{
+                                            fontSize: '12px',
+                                            color: '#999',
+                                            lineHeight: '16px'
+                                        }}>{model.description}</div>
+                                    </div>
                                 </Option>
                             ))}
                         </Select>
@@ -349,13 +388,26 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                         label="上传文件"
                         valuePropName="fileList"
                         getValueFromEvent={normFile}
-                        extra="支持上传JSON和Markdown文件的压缩包"
+                        extra="上传原始文件的压缩包"
                         rules={[{ required: true, message: '请上传文件' }]}
                     >
                         <Upload
                             maxCount={1}
                             beforeUpload={() => false}
                             accept=".zip,.rar,.7z"
+                            onChange={(info) => {
+                                if (info.fileList.length > 0) {
+                                    const modelType = form.getFieldValue('modelType');
+                                    const model = MODEL_TYPES.find(m => m.value === modelType);
+                                    if (model) {
+                                        message.warning({
+                                            content: model.warning,
+                                            duration: 3,
+                                            key: 'modelWarning'
+                                        });
+                                    }
+                                }
+                            }}
                         >
                             <Button icon={<UploadOutlined />} size="large">选择文件</Button>
                         </Upload>

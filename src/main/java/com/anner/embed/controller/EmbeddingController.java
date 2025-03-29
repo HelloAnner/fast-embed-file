@@ -49,10 +49,47 @@ public class EmbeddingController {
             @RequestParam("overlapTokens") Integer overlapTokens) {
         try {
             if (maxTokensPerChunk == null || maxTokensPerChunk <= 0) {
-                throw new RagException(RagErrorCode.INVALID_PARAMETER, "maxTokensPerChunk必须大于0");
+                return ApiResponse.error(RagErrorCode.INVALID_PARAMETER.getCode(),
+                        RagErrorCode.INVALID_PARAMETER.getMessage(),
+                        "maxTokensPerChunk必须大于0，当前值：" + maxTokensPerChunk);
             }
             if (overlapTokens == null || overlapTokens < 0) {
-                throw new RagException(RagErrorCode.INVALID_PARAMETER, "overlapTokens不能小于0");
+                return ApiResponse.error(RagErrorCode.INVALID_PARAMETER.getCode(),
+                        RagErrorCode.INVALID_PARAMETER.getMessage(),
+                        "overlapTokens不能小于0，当前值：" + overlapTokens);
+            }
+
+            // 检查文件类型
+            String originalFilename = file.getOriginalFilename();
+            if (originalFilename == null || (!originalFilename.endsWith(".zip") && !originalFilename.endsWith(".tar")
+                    && !originalFilename.endsWith(".gz"))) {
+                return ApiResponse.error(
+                        "1005", // INVALID_FILE_TYPE
+                        "不支持的文件类型",
+                        String.format("仅支持zip、tar、gz格式的压缩文件，当前文件：%s。\n请确保上传的是正确的压缩文件格式。", originalFilename));
+            }
+
+            // 检查文件大小
+            if (file.getSize() > 100 * 1024 * 1024) { // 100MB
+                return ApiResponse.error(
+                        "1003", // FILE_TOO_LARGE
+                        "文件大小超过限制",
+                        String.format("文件大小不能超过100MB，当前大小：%dMB。\n请压缩文件后重试。", file.getSize() / 1024 / 1024));
+            }
+
+            // 检查API配置
+            if (baseUrl == null || baseUrl.trim().isEmpty()) {
+                return ApiResponse.error(
+                        "4003", // API_ERROR
+                        "API配置错误",
+                        "API地址不能为空，请检查配置。");
+            }
+
+            if (apiKey == null || apiKey.trim().isEmpty()) {
+                return ApiResponse.error(
+                        "4004", // INVALID_API_KEY
+                        "API密钥错误",
+                        "API密钥不能为空，请检查配置。");
             }
 
             EmbeddingConfig config = new EmbeddingConfig();
@@ -72,12 +109,42 @@ public class EmbeddingController {
 
             // 返回任务ID
             return ApiResponse.success(Map.of("taskId", taskId));
-        } catch (Exception e) {
-            log.error("文件处理失败", e);
-            if (e instanceof RagException) {
-                throw (RagException) e;
+        } catch (RagException e) {
+            log.error("文件处理失败: {}", e.getMessage(), e);
+            String errorMessage = e.getMessage();
+            String detailMessage = errorMessage;
+
+            if (errorMessage.contains("API调用错误")) {
+                detailMessage = String.format("%s\n\n请检查：\n1. API地址是否正确\n2. API密钥是否有效\n3. 是否已开通模型使用权限\n4. 模型调用额度是否充足",
+                        errorMessage);
+            } else if (errorMessage.contains("压缩包中未找到可处理的文件")) {
+                detailMessage = String.format(
+                        "%s\n\n请检查：\n1. 压缩包中是否包含json、md或txt格式的文件\n2. 文件内容是否有效\n3. 文件编码是否正确（建议使用UTF-8编码）\n4. 压缩包是否完整且可正常解压",
+                        errorMessage);
+            } else if (errorMessage.contains("文件解压失败")) {
+                detailMessage = String.format(
+                        "%s\n\n可能的原因：\n1. 压缩包格式不正确或已损坏\n2. 压缩包使用了不支持的压缩算法\n3. 压缩包可能被加密\n\n建议：\n1. 使用标准的zip、tar或gz格式重新压缩\n2. 确保压缩包未加密且完整",
+                        errorMessage);
+            } else if (errorMessage.contains("向量化处理失败")) {
+                detailMessage = String.format(
+                        "%s\n\n可能的原因：\n1. API服务异常或超时\n2. 文件内容格式不正确\n3. 模型调用失败\n\n建议：\n1. 检查网络连接\n2. 确认文件内容格式正确\n3. 稍后重试",
+                        errorMessage);
             }
-            throw new RagException(RagErrorCode.FILE_PROCESS_FAILED, e);
+
+            return ApiResponse.error(
+                    e.getErrorCode(),
+                    e.getErrorMessage(),
+                    detailMessage);
+        } catch (Exception e) {
+            log.error("系统错误", e);
+            String errorMessage = String.format("处理过程中发生未知错误：%s", e.getMessage());
+            String detailMessage = String.format("%s\n\n建议：\n1. 检查网络连接是否稳定\n2. 确认文件格式是否正确\n3. 稍后重试\n4. 如果问题持续存在，请联系管理员",
+                    errorMessage);
+
+            return ApiResponse.error(
+                    RagErrorCode.SYSTEM_ERROR.getCode(),
+                    RagErrorCode.SYSTEM_ERROR.getMessage(),
+                    detailMessage);
         }
     }
 
@@ -86,12 +153,18 @@ public class EmbeddingController {
         try {
             double progress = embeddingService.getProgress();
             return ApiResponse.success(Map.of("progress", progress));
+        } catch (RagException e) {
+            log.error("获取进度失败: {}", e.getMessage(), e);
+            return ApiResponse.error(
+                    e.getErrorCode(),
+                    e.getErrorMessage(),
+                    e.getMessage());
         } catch (Exception e) {
             log.error("获取进度失败", e);
-            if (e instanceof RagException) {
-                throw (RagException) e;
-            }
-            throw new RagException(RagErrorCode.SYSTEM_ERROR, e);
+            return ApiResponse.error(
+                    RagErrorCode.SYSTEM_ERROR.getCode(),
+                    RagErrorCode.SYSTEM_ERROR.getMessage(),
+                    "获取进度时发生未知错误：" + e.getMessage());
         }
     }
 
@@ -102,17 +175,20 @@ public class EmbeddingController {
             Task task = taskService.getTask(taskId);
 
             if (task == null) {
-                throw new RagException(RagErrorCode.TASK_NOT_FOUND, "任务不存在");
+                throw new RagException(RagErrorCode.TASK_NOT_FOUND, "任务不存在，taskId: " + taskId);
             }
 
             if (task.getStatus() != TaskStatus.COMPLETED) {
-                throw new RagException(RagErrorCode.FILE_NOT_FOUND, "任务尚未完成，无法下载文件");
+                throw new RagException(RagErrorCode.FILE_NOT_FOUND,
+                        String.format("任务尚未完成，无法下载文件。当前状态：%s，taskId: %s",
+                                task.getStatus(), taskId));
             }
 
             File vectorFile = new File(task.getVectorFilePath());
             if (!vectorFile.exists() || !vectorFile.canRead()) {
-                log.error("向量文件不存在或不可读：{}", vectorFile.getAbsolutePath());
-                throw new RagException(RagErrorCode.FILE_NOT_FOUND, "向量化文件不存在或不可读");
+                throw new RagException(RagErrorCode.FILE_NOT_FOUND,
+                        String.format("向量化文件不存在或不可读。文件路径：%s，taskId: %s",
+                                vectorFile.getAbsolutePath(), taskId));
             }
 
             Resource resource = new FileSystemResource(vectorFile);
@@ -124,12 +200,13 @@ public class EmbeddingController {
                     .contentType(MediaType.APPLICATION_JSON)
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                     .body(resource);
+        } catch (RagException e) {
+            log.error("下载文件失败: {}", e.getMessage(), e);
+            throw e;
         } catch (Exception e) {
             log.error("下载文件失败", e);
-            if (e instanceof RagException) {
-                throw (RagException) e;
-            }
-            throw new RagException(RagErrorCode.FILE_DOWNLOAD_ERROR, e);
+            throw new RagException(RagErrorCode.FILE_DOWNLOAD_ERROR,
+                    String.format("下载文件时发生未知错误：%s，taskId: %s", e.getMessage(), taskId));
         }
     }
 
