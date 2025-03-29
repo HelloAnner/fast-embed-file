@@ -10,7 +10,7 @@ public enum RagErrorCode {
     FILE_TOO_LARGE("1003", "文件大小超过限制"),
     INVALID_FILE_FORMAT("1004", "无效的文件格式"),
     INVALID_FILE_TYPE("1005", "不支持的文件类型"),
-            FILE_EXTRACT_ERROR("1006", "文件解压失败"),
+    FILE_EXTRACT_ERROR("1006", "文件解压失败"),
     FILE_DOWNLOAD_ERROR("1008", "文件下载失败"),
 
     // 目录相关错误 (2000-2999)
@@ -35,7 +35,6 @@ public enum RagErrorCode {
     SYSTEM_ERROR("5001", "系统内部错误"),
     UNEXPECTED_ERROR("5002", "未预期的错误"),
     CONFIG_TEST_FAILED("5002", "配置测试失败"),
-            INVALID_FILE_TYPE("5003", "无效的文件类型"),
     INVALID_FILE_CONTENT("5004", "无效的文件内容"),
 
     // 参数验证错误 (6000-6999)
