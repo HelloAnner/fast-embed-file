@@ -23,6 +23,15 @@ const MODEL_TYPES = [
     }
 ];
 
+// 添加本地模型列表
+const LOCAL_MODEL_TYPES = [
+    {
+        value: 'BgeSmallEnV15QuantizedEmbeddingModel',
+        label: 'BGE Small English V1.5 Quantized',
+        description: '本地量化版本的BGE Small English模型，无需API配置'
+    }
+];
+
 // 添加API地址列表
 const API_URLS = [
     { value: 'https://ark.cn-beijing.volces.com/api/v3', label: 'https://ark.cn-beijing.volces.com/api/v3' },
@@ -76,6 +85,7 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
         { key: 'embedding', title: '生成文本向量', progress: 0, completed: false },
         { key: 'complete', title: '处理完成', progress: 0, completed: false },
     ]);
+    const [modelSource, setModelSource] = useState('online');
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -323,10 +333,41 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                     initialValues={{
                         maxTokensPerChunk: 1000,
                         overlapTokens: 10,
-                        modelType: 'doubao-embedding-text-240715',
+                        modelSource: 'online',
+                        modelType: MODEL_TYPES[0].value,
                         baseUrl: 'https://ark.cn-beijing.volces.com/api/v3'
                     }}
                 >
+                    <Form.Item
+                        label="模型来源"
+                        name="modelSource"
+                        rules={[{ required: true, message: '请选择模型来源' }]}
+                    >
+                        <Select
+                            placeholder="请选择模型来源"
+                            onChange={(value) => {
+                                setModelSource(value);
+                                // 根据模型来源设置默认的模型类型
+                                if (value === 'local') {
+                                    form.setFieldsValue({
+                                        modelType: LOCAL_MODEL_TYPES[0].value,
+                                        baseUrl: undefined,
+                                        apiKey: undefined
+                                    });
+                                } else {
+                                    form.setFieldsValue({
+                                        modelType: MODEL_TYPES[0].value,
+                                        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3'
+                                    });
+                                }
+                            }}
+                            size="large"
+                        >
+                            <Option value="online">在线模型</Option>
+                            <Option value="local">本地模型</Option>
+                        </Select>
+                    </Form.Item>
+
                     <Form.Item
                         label="向量化模型"
                         name="modelType"
@@ -337,51 +378,80 @@ const EmbeddingConfig: React.FC<EmbeddingConfigProps> = () => {
                             listHeight={200}
                             optionLabelProp="label"
                         >
-                            {MODEL_TYPES.map(model => (
-                                <Option
-                                    key={model.value}
-                                    value={model.value}
-                                    label={model.label}
-                                    title={model.description}
-                                >
-                                    <div style={{ padding: '8px 0' }}>
-                                        <div style={{
-                                            fontWeight: 500,
-                                            marginBottom: '4px',
-                                            lineHeight: '20px'
-                                        }}>{model.label}</div>
-                                        <div style={{
-                                            fontSize: '12px',
-                                            color: '#999',
-                                            lineHeight: '16px'
-                                        }}>{model.description}</div>
-                                    </div>
-                                </Option>
-                            ))}
+                            {modelSource === 'online' ? (
+                                MODEL_TYPES.map(model => (
+                                    <Option
+                                        key={model.value}
+                                        value={model.value}
+                                        label={model.label}
+                                        title={model.description}
+                                    >
+                                        <div style={{ padding: '8px 0' }}>
+                                            <div style={{
+                                                fontWeight: 500,
+                                                marginBottom: '4px',
+                                                lineHeight: '20px'
+                                            }}>{model.label}</div>
+                                            <div style={{
+                                                fontSize: '12px',
+                                                color: '#999',
+                                                lineHeight: '16px'
+                                            }}>{model.description}</div>
+                                        </div>
+                                    </Option>
+                                ))
+                            ) : (
+                                LOCAL_MODEL_TYPES.map(model => (
+                                    <Option
+                                        key={model.value}
+                                        value={model.value}
+                                        label={model.label}
+                                        title={model.description}
+                                    >
+                                        <div style={{ padding: '8px 0' }}>
+                                            <div style={{
+                                                fontWeight: 500,
+                                                marginBottom: '4px',
+                                                lineHeight: '20px'
+                                            }}>{model.label}</div>
+                                            <div style={{
+                                                fontSize: '12px',
+                                                color: '#999',
+                                                lineHeight: '16px'
+                                            }}>{model.description}</div>
+                                        </div>
+                                    </Option>
+                                ))
+                            )}
                         </Select>
                     </Form.Item>
 
-                    <Form.Item
-                        name="baseUrl"
-                        label="API 地址"
-                        rules={[{ required: true, message: '请选择API地址' }]}
-                    >
-                        <Select placeholder="请选择API地址" size="large">
-                            {API_URLS.map(url => (
-                                <Option key={url.value} value={url.value}>
-                                    {url.label}
-                                </Option>
-                            ))}
-                        </Select>
-                    </Form.Item>
+                    {modelSource === 'online' && (
+                        <>
+                            <Form.Item
+                                name="baseUrl"
+                                label="API 地址"
+                                rules={[{ required: true, message: '请选择API地址' }]}
+                            >
+                                <Select placeholder="请选择API地址" size="large">
+                                    {API_URLS.map(url => (
+                                        <Option key={url.value} value={url.value}>
+                                            {url.label}
+                                        </Option>
+                                    ))}
+                                </Select>
+                            </Form.Item>
 
-                    <Form.Item
-                        name="apiKey"
-                        label="API Key"
-                        rules={[{ required: true, message: '请输入API Key' }]}
-                    >
-                        <Input.Password placeholder="请输入API Key" size="large" />
-                    </Form.Item>
+                            <Form.Item
+                                name="apiKey"
+                                label="API Key"
+                                rules={[{ required: true, message: '请输入API Key' }]}
+                                help="请确认账号开启向量化模型权限"
+                            >
+                                <Input.Password placeholder="请输入API Key" size="large" />
+                            </Form.Item>
+                        </>
+                    )}
 
                     <Form.Item
                         name="file"
